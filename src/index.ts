@@ -17,6 +17,7 @@ import { schedulesRouter } from './api/routes/schedules.routes.js';
 import { auditRouter } from './api/routes/audit.routes.js';
 import settingsRouter from './api/routes/settings.routes.js';
 import mountsRouter from './api/routes/mounts.routes.js';
+import { invitationsRouter } from './api/routes/invitations.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { setupWebSocket } from './websocket/index.js';
 import { prisma } from './lib/prisma.js';
@@ -67,7 +68,7 @@ app.use('/api/eggs', eggsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/mounts', mountsRouter);
-app.use('/api/invitations', (await import('./api/routes/invitations.routes.js')).invitationsRouter);
+app.use('/api/invitations', invitationsRouter);
 
 // Error handler
 app.use(errorHandler);
