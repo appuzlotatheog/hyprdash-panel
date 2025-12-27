@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MODERATOR
+  USER
+}
+
+enum ServerStatus {
+  OFFLINE
+  STARTING
+  RUNNING
+  STOPPING
+}
+
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  username          String    @unique
+  password          String
+  role              Role      @default(USER)
+  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret   String?   @map("two_factor_secret")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  servers           Server[]
+  subusers          Subuser[]
+  apiKeys           ApiKey[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  name        String
+  key         String    @unique
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Node {
+  id          String    @id @default(uuid())
+  name        String
+  fqdn        String
+  port        Int       @default(8080)
+  scheme      String    @default("https")
+  token       String    @unique
+  memory      Int       // Total memory in MB
+  disk        Int       // Total disk in MB
+  isOnline    Boolean   @default(false) @map("is_online")
+  lastChecked DateTime? @map("last_checked")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  servers     Server[]
+  allocations Allocation[]
+  mounts      Mount[]
+
+  @@map("nodes")
+}
+
+model Allocation {
+  id        String   @id @default(uuid())
+  nodeId    String   @map("node_id")
+  ip        String
+  port      Int
+  serverId  String?  @unique @map("server_id")
+  notes     String?
+
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  @@unique([nodeId, ip, port])
+  @@map("allocations")
+}
+
+model Egg {
+  id              String    @id @default(uuid())
+  name            String
+  author          String?
+  description     String?
+  features        String?   // JSON array: ["eula", "java_version"]
+  dockerImages    String?   @map("docker_images") // JSON: {"Java 21": "image:tag"}
+  startup         String    // Startup command with {{VAR}} placeholders
+  configFiles     String?   @map("config_files") // JSON config
+  configStartup   String?   @map("config_startup") // JSON: {"done": "pattern"}
+  stopCommand     String    @default("stop") @map("stop_command")
+  scriptInstall   String?   @map("script_install") // Installation bash script
+  scriptContainer String?   @map("script_container") // Docker image for install
+  fileDenylist    String?   @map("file_denylist") // JSON array of denied files
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  servers     Server[]
+  variables   EggVariable[]
+
+  @@map("eggs")
+}
+
+model EggVariable {
+  id           String   @id @default(uuid())
+  eggId        String   @map("egg_id")
+  name         String
+  description  String?
+  envVariable  String   @map("env_variable")
+  defaultValue String?  @map("default_value")
+  userViewable Boolean  @default(true) @map("user_viewable")
+  userEditable Boolean  @default(true) @map("user_editable")
+  rules        String?  // Validation rules like "required|string|max:20"
+  fieldType    String   @default("text") @map("field_type") // text, select, etc.
+
+  egg          Egg      @relation(fields: [eggId], references: [id], onDelete: Cascade)
+
+  @@map("egg_variables")
+}
+
+model Server {
+  id              String       @id @default(uuid())
+  nodeId          String       @map("node_id")
+  ownerId         String       @map("owner_id")
+  eggId           String?      @map("egg_id")
+  name            String
+  description     String?
+  memory          Int          // Memory limit in MB
+  disk            Int          // Disk limit in MB
+  cpu             Int          @default(100) // CPU limit percentage
+  startup         String       // Startup command (from egg or custom)
+  dockerImage     String?      @map("docker_image") // Selected docker image
+  installed       Boolean      @default(false) // Whether installation completed
+  status          ServerStatus @default(OFFLINE)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  node        Node         @relation(fields: [nodeId], references: [id])
+  owner       User         @relation(fields: [ownerId], references: [id])
+  egg         Egg?         @relation(fields: [eggId], references: [id])
+  allocation  Allocation?
+  variables   ServerVariable[]
+  subusers    Subuser[]
+  backups     Backup[]
+  schedules   Schedule[]
+  mounts      ServerMount[]
+
+  @@map("servers")
+}
+
+model ServerVariable {
+  id          String   @id @default(uuid())
+  serverId    String   @map("server_id")
+  name        String
+  envVariable String   @map("env_variable")
+  value       String
+
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, envVariable])
+  @@map("server_variables")
+}
+
+model Subuser {
+  id          String   @id @default(uuid())
+  serverId    String   @map("server_id")
+  userId      String   @map("user_id")
+  permissions String   // JSON string of permission array
+
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@map("subusers")
+}
+
+model Backup {
+  id          String       @id @default(uuid())
+  serverId    String       @map("server_id")
+  name        String
+  size        BigInt?      // Size in bytes
+  status      BackupStatus @default(PENDING)
+  checksum    String?
+  storagePath String?      @map("storage_path")
+  completedAt DateTime?    @map("completed_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  server      Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("backups")
+}
+
+model Schedule {
+  id         String   @id @default(uuid())
+  serverId   String   @map("server_id")
+  name       String
+  cron       String   // Cron expression
+  action     String   // Action to perform (restart, backup, command)
+  payload    String?  // Additional payload (e.g., command to run)
+  isActive   Boolean  @default(true) @map("is_active")
+  lastRunAt  DateTime? @map("last_run_at")
+  nextRunAt  DateTime? @map("next_run_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("schedules")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String   // e.g., "server.create", "user.delete"
+  metadata  String?  // JSON string of details
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
+}
+
+model Mount {
+  id        String   @id @default(uuid())
+  name      String
+  source    String   // Path on the host (Node)
+  target    String   // Path in the container
+  readOnly  Boolean  @default(false) @map("read_only")
+  
+  nodeId    String   @map("node_id")
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  servers   ServerMount[]
+
+  @@map("mounts")
+}
+
+model ServerMount {
+  id        String   @id @default(uuid())
+  serverId  String   @map("server_id")
+  mountId   String   @map("mount_id")
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  mount     Mount    @relation(fields: [mountId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, mountId])
+  @@map("server_mounts")
+}
+
+model Invitation {
+  id          String   @id @default(uuid())
+  email       String
+  token       String   @unique
+  serverId    String   @map("server_id")
+  permissions String   // JSON string of permission array
+  invitedBy   String   @map("invited_by")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("invitations")
+}
