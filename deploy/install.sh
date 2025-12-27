@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # ============================================
-# HyprDash - Production Installer
-# ============================================
-# Fetches from GitHub, installs dependencies,
-# sets up nginx, SSL certificates, and more
+# HyprDash - Interactive Installer
 # ============================================
 
 set -e
@@ -18,521 +15,261 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 BOLD='\033[1m'
 
-# GitHub Repositories
-PANEL_REPO="https://github.com/appuzlotatheog/hyprdash-panel.git"
-DAEMON_REPO="https://github.com/appuzlotatheog/hyprdash-daemon.git"
-
 # Defaults
-INSTALL_DIR="/opt/hyprdash"
 PANEL_PORT=3001
 WEB_PORT=5173
 DAEMON_PORT=8080
 PANEL_NAME="HyprDash"
-DOMAIN=""
-EMAIL=""
-INSTALL_PANEL=false
-INSTALL_DAEMON=false
-SETUP_NGINX=false
-SETUP_SSL=false
-CREATE_SERVICE=true
+INSTALL_PANEL=true
+INSTALL_DAEMON=true
+INSTALL_WEB=true
 
 # Print banner
 print_banner() {
-    clear
     echo -e "${CYAN}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                                                               ║"
-    echo "║   ██╗  ██╗██╗   ██╗██████╗ ██████╗ ██████╗  █████╗ ███████╗  ║"
-    echo "║   ██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝  ║"
-    echo "║   ███████║ ╚████╔╝ ██████╔╝██████╔╝██║  ██║███████║███████╗  ║"
-    echo "║   ██╔══██║  ╚██╔╝  ██╔═══╝ ██╔══██╗██║  ██║██╔══██║╚════██║  ║"
-    echo "║   ██║  ██║   ██║   ██║     ██║  ██║██████╔╝██║  ██║███████║  ║"
-    echo "║   ╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝  ║"
-    echo "║                                                               ║"
-    echo "║              Production Installer v1.0                        ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
+    echo "╔═══════════════════════════════════════════════════════════════════════════════════════════╗"
+    echo "║                                                                                           ║"
+    echo "║     ${BOLD}██╗  ██╗██╗   ██╗██████╗ ██████╗ ██████╗  █████╗ ███████╗██╗  ██╗${NC}${CYAN}  ║"
+    echo "║     ${BOLD}██║  ██║╚██╗ ██╔╝██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝██║  ██║${NC}${CYAN}  ║"
+    echo "║     ${BOLD}███████║ ╚████╔╝ ██████╔╝██████╔╝██║  ██║███████║███████╗███████║${NC}${CYAN}  ║"
+    echo "║     ${BOLD}██╔══██║  ╚██╔╝  ██╔═══╝ ██╔══██╗██║  ██║██╔══██║╚════██║██╔══██║${NC}${CYAN}  ║"
+    echo "║     ${BOLD}██║  ██║   ██║   ██║     ██║  ██║██████╔╝██║  ██║███████║██║  ██║${NC}${CYAN}  ║"
+    echo "║     ${BOLD}╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝${NC}${CYAN}  ║"
+    echo "║                                                                                           ║"
+    echo "║              Game Server Management Panel                                                 ║"
+    echo "╚═══════════════════════════════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-# Logging functions
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-log_error() { echo -e "${RED}[✗]${NC} $1"; }
-
-# Check if running as root
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root (use sudo)"
+# Check prerequisites
+check_prerequisites() {
+    echo -e "${BLUE}[1/7] Checking prerequisites...${NC}"
+    
+    # Check Node.js
+    if ! command -v node &> /dev/null; then
+        echo -e "${RED}✗ Node.js is not installed${NC}"
+        echo -e "${YELLOW}  Please install Node.js 18+ first: https://nodejs.org${NC}"
         exit 1
     fi
-}
-
-# Detect OS
-detect_os() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$ID
-        OS_VERSION=$VERSION_ID
-    else
-        log_error "Cannot detect OS"
+    
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 18 ]; then
+        echo -e "${RED}✗ Node.js version must be 18 or higher (found: $(node -v))${NC}"
         exit 1
     fi
-    log_info "Detected OS: $OS $OS_VERSION"
+    echo -e "${GREEN}✓ Node.js $(node -v)${NC}"
+    
+    # Check npm
+    if ! command -v npm &> /dev/null; then
+        echo -e "${RED}✗ npm is not installed${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ npm $(npm -v)${NC}"
 }
 
-# Install system packages
-install_packages() {
-    log_info "Installing required packages..."
-    
-    case $OS in
-        ubuntu|debian)
-            apt-get update -qq
-            apt-get install -y -qq curl wget git unzip tar software-properties-common \
-                ca-certificates gnupg lsb-release
-            ;;
-        centos|rhel|fedora|rocky|almalinux)
-            if command -v dnf &> /dev/null; then
-                dnf install -y -q curl wget git unzip tar
-            else
-                yum install -y -q curl wget git unzip tar
-            fi
-            ;;
-        *)
-            log_warn "Unsupported OS: $OS. Installing basic packages manually..."
-            ;;
-    esac
-    log_success "System packages installed"
-}
-
-# Install Node.js
-install_nodejs() {
-    if command -v node &> /dev/null; then
-        NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-        if [ "$NODE_VERSION" -ge 18 ]; then
-            log_success "Node.js $(node -v) already installed"
-            return
-        fi
-    fi
-    
-    log_info "Installing Node.js 20.x..."
-    
-    case $OS in
-        ubuntu|debian)
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-            apt-get install -y -qq nodejs
-            ;;
-        centos|rhel|fedora|rocky|almalinux)
-            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-            if command -v dnf &> /dev/null; then
-                dnf install -y -q nodejs
-            else
-                yum install -y -q nodejs
-            fi
-            ;;
-        *)
-            log_error "Please install Node.js 18+ manually"
-            exit 1
-            ;;
-    esac
-    log_success "Node.js $(node -v) installed"
-}
-
-# Install nginx
-install_nginx() {
-    if ! $SETUP_NGINX; then
-        return
-    fi
-    
-    if command -v nginx &> /dev/null; then
-        log_success "Nginx already installed"
-        return
-    fi
-    
-    log_info "Installing Nginx..."
-    
-    case $OS in
-        ubuntu|debian)
-            apt-get install -y -qq nginx
-            ;;
-        centos|rhel|fedora|rocky|almalinux)
-            if command -v dnf &> /dev/null; then
-                dnf install -y -q nginx
-            else
-                yum install -y -q nginx
-            fi
-            ;;
-    esac
-    
-    systemctl enable nginx
-    systemctl start nginx
-    log_success "Nginx installed and started"
-}
-
-# Install Certbot for SSL
-install_certbot() {
-    if ! $SETUP_SSL; then
-        return
-    fi
-    
-    if command -v certbot &> /dev/null; then
-        log_success "Certbot already installed"
-        return
-    fi
-    
-    log_info "Installing Certbot..."
-    
-    case $OS in
-        ubuntu|debian)
-            apt-get install -y -qq certbot python3-certbot-nginx
-            ;;
-        centos|rhel|fedora|rocky|almalinux)
-            if command -v dnf &> /dev/null; then
-                dnf install -y -q certbot python3-certbot-nginx
-            else
-                yum install -y -q certbot python3-certbot-nginx
-            fi
-            ;;
-    esac
-    log_success "Certbot installed"
-}
-
-# Interactive menu
-show_menu() {
+# Interactive component selection
+select_components() {
     echo ""
-    echo -e "${BOLD}What would you like to install?${NC}"
+    echo -e "${BLUE}[2/7] Select components to install:${NC}"
     echo ""
-    echo "  1) Panel (API + Web UI)"
-    echo "  2) Daemon (Node Agent)"
-    echo "  3) Both Panel and Daemon"
-    echo "  4) Exit"
+    echo "  1) Panel + Web UI (Web interface & API)"
+    echo "  2) Daemon only (Node agent for running servers)"
+    echo "  3) Both (Full installation)"
     echo ""
-    read -p "  Select option [1-4]: " choice
+    read -p "  Enter choice [1-3] (default: 3): " choice
     
     case $choice in
-        1) INSTALL_PANEL=true ;;
-        2) INSTALL_DAEMON=true ;;
-        3) INSTALL_PANEL=true; INSTALL_DAEMON=true ;;
-        4) echo "Goodbye!"; exit 0 ;;
-        *) log_error "Invalid option"; show_menu ;;
+        1)
+            INSTALL_PANEL=true
+            INSTALL_WEB=true
+            INSTALL_DAEMON=false
+            echo -e "${GREEN}  ✓ Installing: Panel + Web UI${NC}"
+            ;;
+        2)
+            INSTALL_PANEL=false
+            INSTALL_WEB=false
+            INSTALL_DAEMON=true
+            echo -e "${GREEN}  ✓ Installing: Daemon only${NC}"
+            ;;
+        3|"")
+            INSTALL_PANEL=true
+            INSTALL_WEB=true
+            INSTALL_DAEMON=true
+            echo -e "${GREEN}  ✓ Installing: Full installation${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}  Invalid choice, defaulting to full installation${NC}"
+            ;;
     esac
 }
 
-# Configure installation
-configure_install() {
+# Configure ports
+configure_ports() {
     echo ""
-    echo -e "${BOLD}Configuration${NC}"
+    echo -e "${BLUE}[3/7] Configure ports:${NC}"
     echo ""
     
-    # Installation directory
-    read -p "  Install directory [$INSTALL_DIR]: " input
-    INSTALL_DIR=${input:-$INSTALL_DIR}
-    
-    if $INSTALL_PANEL; then
-        # Panel configuration
-        read -p "  Panel API port [$PANEL_PORT]: " input
-        PANEL_PORT=${input:-$PANEL_PORT}
+    if [ "$INSTALL_PANEL" = true ]; then
+        read -p "  Panel API port (default: $PANEL_PORT): " input_panel_port
+        PANEL_PORT=${input_panel_port:-$PANEL_PORT}
+        echo -e "${GREEN}  ✓ Panel API: $PANEL_PORT${NC}"
         
-        read -p "  Web UI port [$WEB_PORT]: " input
-        WEB_PORT=${input:-$WEB_PORT}
-        
-        read -p "  Panel name [$PANEL_NAME]: " input
-        PANEL_NAME=${input:-$PANEL_NAME}
+        read -p "  Web UI port (default: $WEB_PORT): " input_web_port
+        WEB_PORT=${input_web_port:-$WEB_PORT}
+        echo -e "${GREEN}  ✓ Web UI: $WEB_PORT${NC}"
     fi
     
-    if $INSTALL_DAEMON; then
-        read -p "  Daemon port [$DAEMON_PORT]: " input
-        DAEMON_PORT=${input:-$DAEMON_PORT}
-    fi
-    
-    # Nginx
-    echo ""
-    read -p "  Setup Nginx reverse proxy? [y/N]: " input
-    if [[ "$input" =~ ^[Yy]$ ]]; then
-        SETUP_NGINX=true
-        read -p "  Domain name (e.g., panel.example.com): " DOMAIN
-        
-        if [ -n "$DOMAIN" ]; then
-            read -p "  Setup SSL with Let's Encrypt? [y/N]: " input
-            if [[ "$input" =~ ^[Yy]$ ]]; then
-                SETUP_SSL=true
-                read -p "  Email for SSL notifications: " EMAIL
-            fi
-        fi
-    fi
-    
-    # Systemd
-    read -p "  Create systemd services? [Y/n]: " input
-    if [[ "$input" =~ ^[Nn]$ ]]; then
-        CREATE_SERVICE=false
+    if [ "$INSTALL_DAEMON" = true ]; then
+        read -p "  Daemon port (default: $DAEMON_PORT): " input_daemon_port
+        DAEMON_PORT=${input_daemon_port:-$DAEMON_PORT}
+        echo -e "${GREEN}  ✓ Daemon: $DAEMON_PORT${NC}"
     fi
 }
 
-# Clone repositories
-clone_repos() {
-    log_info "Creating directory: $INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
-    
-    if $INSTALL_PANEL; then
-        if [ -d "panel" ]; then
-            log_warn "Panel directory exists, pulling latest..."
-            cd panel && git pull && cd ..
-        else
-            log_info "Cloning HyprDash Panel..."
-            git clone --depth 1 "$PANEL_REPO" panel
-        fi
-        log_success "Panel downloaded"
-    fi
-    
-    if $INSTALL_DAEMON; then
-        if [ -d "daemon" ]; then
-            log_warn "Daemon directory exists, pulling latest..."
-            cd daemon && git pull && cd ..
-        else
-            log_info "Cloning HyprDash Daemon..."
-            git clone --depth 1 "$DAEMON_REPO" daemon
-        fi
-        log_success "Daemon downloaded"
-    fi
-}
-
-# Setup Panel
-setup_panel() {
-    if ! $INSTALL_PANEL; then
-        return
-    fi
-    
-    log_info "Setting up Panel..."
-    cd "$INSTALL_DIR/panel"
-    
-    # Install dependencies
-    log_info "Installing Panel dependencies..."
-    npm install --silent
-    
-    # Install web dependencies
-    log_info "Installing Web UI dependencies..."
-    cd web && npm install --silent && cd ..
-    
-    # Create .env
-    if [ ! -f .env ]; then
-        log_info "Creating .env file..."
-        JWT_SECRET=$(openssl rand -hex 32)
-        cat > .env << EOF
-DATABASE_URL="file:./prisma/dev.db"
-JWT_SECRET="$JWT_SECRET"
-PORT=$PANEL_PORT
-CORS_ORIGIN="http://localhost:$WEB_PORT"
-PANEL_NAME="$PANEL_NAME"
-EOF
-    fi
-    
-    # Build
-    log_info "Building Panel..."
-    npm run build:api
-    
-    log_info "Building Web UI..."
-    npm run build:web
-    
-    # Setup database
-    log_info "Setting up database..."
-    npm run db:generate
-    npm run db:push
-    npm run db:seed
-    
-    log_success "Panel setup complete"
-}
-
-# Setup Daemon
-setup_daemon() {
-    if ! $INSTALL_DAEMON; then
-        return
-    fi
-    
-    log_info "Setting up Daemon..."
-    cd "$INSTALL_DIR/daemon"
-    
-    # Install dependencies
-    log_info "Installing Daemon dependencies..."
-    npm install --silent
-    
-    # Create config
-    if [ ! -f config.json ]; then
-        log_info "Creating config.json..."
-        cat > config.json << EOF
-{
-    "panelUrl": "http://localhost:$PANEL_PORT",
-    "token": "CHANGE_ME_TO_YOUR_NODE_TOKEN",
-    "port": $DAEMON_PORT,
-    "serversDir": "./servers"
-}
-EOF
-    fi
-    
-    # Create servers directory
-    mkdir -p servers
-    
-    # Build
-    log_info "Building Daemon..."
-    npm run build
-    
-    log_success "Daemon setup complete"
-}
-
-# Setup Nginx
-setup_nginx_config() {
-    if ! $SETUP_NGINX || [ -z "$DOMAIN" ]; then
-        return
-    fi
-    
-    log_info "Configuring Nginx..."
-    
-    if $INSTALL_PANEL; then
-        cat > /etc/nginx/sites-available/hyprdash << EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    
-    # API
-    location /api {
-        proxy_pass http://localhost:$PANEL_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-    
-    # WebSocket
-    location /socket.io {
-        proxy_pass http://localhost:$PANEL_PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
-    
-    # Web UI (serve static files or proxy to dev server)
-    location / {
-        root $INSTALL_DIR/panel/web/dist;
-        try_files \$uri \$uri/ /index.html;
-    }
-}
-EOF
-        
-        # Enable site
-        ln -sf /etc/nginx/sites-available/hyprdash /etc/nginx/sites-enabled/
-        rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-        
-        nginx -t && systemctl reload nginx
-        log_success "Nginx configured for Panel"
-    fi
-}
-
-# Setup SSL
-setup_ssl_cert() {
-    if ! $SETUP_SSL || [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
-        return
-    fi
-    
-    log_info "Obtaining SSL certificate..."
-    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"
-    log_success "SSL certificate installed"
-}
-
-# Create systemd services
-create_services() {
-    if ! $CREATE_SERVICE; then
-        return
-    fi
-    
-    if $INSTALL_PANEL; then
-        log_info "Creating Panel systemd service..."
-        cat > /etc/systemd/system/hyprdash-panel.service << EOF
-[Unit]
-Description=HyprDash Panel
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$INSTALL_DIR/panel
-ExecStart=/usr/bin/node dist/index.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-        systemctl daemon-reload
-        systemctl enable hyprdash-panel
-        log_success "Panel service created"
-    fi
-    
-    if $INSTALL_DAEMON; then
-        log_info "Creating Daemon systemd service..."
-        cat > /etc/systemd/system/hyprdash-daemon.service << EOF
-[Unit]
-Description=HyprDash Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$INSTALL_DIR/daemon
-ExecStart=/usr/bin/node dist/index.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-        systemctl daemon-reload
-        systemctl enable hyprdash-daemon
-        log_success "Daemon service created"
+# Configure panel name
+configure_panel_name() {
+    if [ "$INSTALL_PANEL" = true ]; then
+        echo ""
+        echo -e "${BLUE}[4/7] Configure panel branding:${NC}"
+        echo ""
+        read -p "  Panel name (default: $PANEL_NAME): " input_name
+        PANEL_NAME=${input_name:-$PANEL_NAME}
+        echo -e "${GREEN}  ✓ Panel name: $PANEL_NAME${NC}"
     fi
 }
 
 # Configure firewall
 configure_firewall() {
-    log_info "Configuring firewall..."
+    echo ""
+    echo -e "${BLUE}[5/7] Firewall configuration:${NC}"
+    echo ""
     
+    # Detect firewall
+    FIREWALL=""
     if command -v ufw &> /dev/null; then
-        ufw allow 22/tcp 2>/dev/null || true
-        ufw allow 80/tcp 2>/dev/null || true
-        ufw allow 443/tcp 2>/dev/null || true
-        
-        if $INSTALL_PANEL; then
-            ufw allow $PANEL_PORT/tcp 2>/dev/null || true
-        fi
-        if $INSTALL_DAEMON; then
-            ufw allow $DAEMON_PORT/tcp 2>/dev/null || true
-        fi
-        
-        echo "y" | ufw enable 2>/dev/null || true
-        log_success "UFW configured"
-        
+        FIREWALL="ufw"
     elif command -v firewall-cmd &> /dev/null; then
-        firewall-cmd --permanent --add-service=http 2>/dev/null || true
-        firewall-cmd --permanent --add-service=https 2>/dev/null || true
-        
-        if $INSTALL_PANEL; then
-            firewall-cmd --permanent --add-port=$PANEL_PORT/tcp 2>/dev/null || true
+        FIREWALL="firewalld"
+    fi
+    
+    if [ -z "$FIREWALL" ]; then
+        echo -e "${YELLOW}  No firewall detected (ufw/firewalld). Skipping...${NC}"
+        return
+    fi
+    
+    echo "  Detected: $FIREWALL"
+    read -p "  Open required ports in firewall? [y/N]: " open_fw
+    
+    if [[ "$open_fw" =~ ^[Yy]$ ]]; then
+        if [ "$FIREWALL" = "ufw" ]; then
+            if [ "$INSTALL_PANEL" = true ]; then
+                sudo ufw allow $PANEL_PORT/tcp comment "HyprDash Panel API"
+                sudo ufw allow $WEB_PORT/tcp comment "HyprDash Web UI"
+                echo -e "${GREEN}  ✓ Opened ports $PANEL_PORT, $WEB_PORT${NC}"
+            fi
+            if [ "$INSTALL_DAEMON" = true ]; then
+                sudo ufw allow $DAEMON_PORT/tcp comment "HyprDash Daemon"
+                echo -e "${GREEN}  ✓ Opened port $DAEMON_PORT${NC}"
+            fi
+        elif [ "$FIREWALL" = "firewalld" ]; then
+            if [ "$INSTALL_PANEL" = true ]; then
+                sudo firewall-cmd --permanent --add-port=$PANEL_PORT/tcp
+                sudo firewall-cmd --permanent --add-port=$WEB_PORT/tcp
+                echo -e "${GREEN}  ✓ Opened ports $PANEL_PORT, $WEB_PORT${NC}"
+            fi
+            if [ "$INSTALL_DAEMON" = true ]; then
+                sudo firewall-cmd --permanent --add-port=$DAEMON_PORT/tcp
+                echo -e "${GREEN}  ✓ Opened port $DAEMON_PORT${NC}"
+            fi
+            sudo firewall-cmd --reload
         fi
-        if $INSTALL_DAEMON; then
-            firewall-cmd --permanent --add-port=$DAEMON_PORT/tcp 2>/dev/null || true
-        fi
-        
-        firewall-cmd --reload 2>/dev/null || true
-        log_success "Firewalld configured"
     else
-        log_warn "No firewall detected"
+        echo -e "${YELLOW}  Skipping firewall configuration${NC}"
+    fi
+}
+
+# Install dependencies
+install_dependencies() {
+    echo ""
+    echo -e "${BLUE}[6/7] Installing dependencies...${NC}"
+    npm install
+    echo -e "${GREEN}✓ Dependencies installed${NC}"
+}
+
+# Build and configure
+build_and_configure() {
+    echo ""
+    echo -e "${BLUE}[7/7] Building and configuring...${NC}"
+    
+    # Generate Panel .env
+    if [ "$INSTALL_PANEL" = true ]; then
+        PANEL_ENV="packages/panel/.env"
+        if [ ! -f "$PANEL_ENV" ]; then
+            echo -e "${CYAN}  Creating Panel .env...${NC}"
+            cat > "$PANEL_ENV" << EOF
+# Database
+DATABASE_URL="file:./dev.db"
+
+# JWT Secret (auto-generated)
+JWT_SECRET="$(openssl rand -hex 32)"
+
+# Server Port
+PORT=$PANEL_PORT
+
+# Panel Name
+PANEL_NAME="$PANEL_NAME"
+EOF
+            echo -e "${GREEN}  ✓ Created $PANEL_ENV${NC}"
+        else
+            echo -e "${YELLOW}  $PANEL_ENV already exists, skipping...${NC}"
+        fi
+    fi
+    
+    # Generate Daemon config
+    if [ "$INSTALL_DAEMON" = true ]; then
+        DAEMON_CONFIG="packages/daemon/config.json"
+        if [ ! -f "$DAEMON_CONFIG" ]; then
+            echo -e "${CYAN}  Creating Daemon config...${NC}"
+            cat > "$DAEMON_CONFIG" << EOF
+{
+    "panelUrl": "http://localhost:$PANEL_PORT",
+    "token": "CHANGE_ME_TO_NODE_TOKEN",
+    "port": $DAEMON_PORT,
+    "serversDir": "./servers"
+}
+EOF
+            echo -e "${GREEN}  ✓ Created $DAEMON_CONFIG${NC}"
+        else
+            echo -e "${YELLOW}  $DAEMON_CONFIG already exists, skipping...${NC}"
+        fi
+    fi
+    
+    # Build selected components
+    if [ "$INSTALL_PANEL" = true ]; then
+        echo -e "${CYAN}  Building Panel...${NC}"
+        npm run build --workspace=@game-panel/panel
+        echo -e "${GREEN}  ✓ Panel built${NC}"
+    fi
+    
+    if [ "$INSTALL_DAEMON" = true ]; then
+        echo -e "${CYAN}  Building Daemon...${NC}"
+        npm run build --workspace=@game-panel/daemon
+        echo -e "${GREEN}  ✓ Daemon built${NC}"
+    fi
+    
+    if [ "$INSTALL_WEB" = true ]; then
+        echo -e "${CYAN}  Building Web UI...${NC}"
+        npm run build --workspace=@game-panel/web
+        echo -e "${GREEN}  ✓ Web UI built${NC}"
+    fi
+    
+    # Setup database
+    if [ "$INSTALL_PANEL" = true ]; then
+        echo -e "${CYAN}  Setting up database...${NC}"
+        npm run db:generate
+        npm run db:push
+        npm run db:seed
+        echo -e "${GREEN}  ✓ Database ready${NC}"
     fi
 }
 
@@ -540,148 +277,51 @@ configure_firewall() {
 print_summary() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              Installation Complete!                           ║${NC}"
+    echo -e "${GREEN}║                  Installation Complete!                       ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    echo -e "  ${BOLD}Installation Directory:${NC} $INSTALL_DIR"
-    echo ""
-    
-    if $INSTALL_PANEL; then
-        echo -e "  ${BOLD}Panel${NC}"
-        echo -e "    API:     http://localhost:$PANEL_PORT"
-        if [ -n "$DOMAIN" ]; then
-            if $SETUP_SSL; then
-                echo -e "    URL:     https://$DOMAIN"
-            else
-                echo -e "    URL:     http://$DOMAIN"
-            fi
-        fi
+    if [ "$INSTALL_PANEL" = true ]; then
+        echo -e "  ${BOLD}Panel API:${NC}   http://localhost:$PANEL_PORT"
+        echo -e "  ${BOLD}Web UI:${NC}      http://localhost:$WEB_PORT"
+        echo -e "  ${BOLD}Panel Name:${NC}  $PANEL_NAME"
         echo ""
     fi
     
-    if $INSTALL_DAEMON; then
-        echo -e "  ${BOLD}Daemon${NC}"
-        echo -e "    Port:    $DAEMON_PORT"
-        echo -e "    Config:  $INSTALL_DIR/daemon/config.json"
+    if [ "$INSTALL_DAEMON" = true ]; then
+        echo -e "  ${BOLD}Daemon:${NC}      http://localhost:$DAEMON_PORT"
         echo ""
     fi
     
-    echo -e "  ${BOLD}Commands:${NC}"
-    if $CREATE_SERVICE; then
-        if $INSTALL_PANEL; then
-            echo "    sudo systemctl start hyprdash-panel"
-            echo "    sudo systemctl status hyprdash-panel"
-        fi
-        if $INSTALL_DAEMON; then
-            echo "    sudo systemctl start hyprdash-daemon"
-            echo "    sudo systemctl status hyprdash-daemon"
-        fi
-    fi
+    echo -e "  ${BOLD}Next Steps:${NC}"
     echo ""
     
-    if $INSTALL_DAEMON; then
-        echo -e "  ${YELLOW}[!] Remember to update daemon/config.json with your node token!${NC}"
-        echo ""
+    if [ "$INSTALL_PANEL" = true ]; then
+        echo "  1. Edit packages/panel/.env with your database credentials"
+        echo "  2. Start the panel: npm run start:panel"
     fi
     
-    echo -e "  ${CYAN}Thank you for using HyprDash!${NC}"
+    if [ "$INSTALL_DAEMON" = true ]; then
+        echo "  3. Edit packages/daemon/config.json with the node token from the panel"
+        echo "  4. Start the daemon: npm run start:daemon"
+    fi
+    
     echo ""
-}
-
-# Command line arguments
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --panel)
-                INSTALL_PANEL=true
-                shift
-                ;;
-            --daemon)
-                INSTALL_DAEMON=true
-                shift
-                ;;
-            --both)
-                INSTALL_PANEL=true
-                INSTALL_DAEMON=true
-                shift
-                ;;
-            --dir=*)
-                INSTALL_DIR="${1#*=}"
-                shift
-                ;;
-            --domain=*)
-                DOMAIN="${1#*=}"
-                SETUP_NGINX=true
-                shift
-                ;;
-            --email=*)
-                EMAIL="${1#*=}"
-                SETUP_SSL=true
-                shift
-                ;;
-            --no-service)
-                CREATE_SERVICE=false
-                shift
-                ;;
-            --help|-h)
-                echo "HyprDash Installer"
-                echo ""
-                echo "Usage: $0 [options]"
-                echo ""
-                echo "Options:"
-                echo "  --panel         Install Panel only"
-                echo "  --daemon        Install Daemon only"
-                echo "  --both          Install both Panel and Daemon"
-                echo "  --dir=PATH      Installation directory (default: /opt/hyprdash)"
-                echo "  --domain=DOMAIN Setup Nginx with domain"
-                echo "  --email=EMAIL   Email for SSL certificate"
-                echo "  --no-service    Don't create systemd services"
-                echo "  --help          Show this help"
-                echo ""
-                echo "Interactive mode is used if no component is specified."
-                exit 0
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                echo "Use --help for usage information"
-                exit 1
-                ;;
-        esac
-    done
+    echo -e "  ${CYAN}For development mode: npm run dev${NC}"
+    echo ""
 }
 
 # Main
 main() {
-    parse_args "$@"
     print_banner
-    check_root
-    detect_os
-    
-    # Interactive mode if nothing selected
-    if ! $INSTALL_PANEL && ! $INSTALL_DAEMON; then
-        show_menu
-        configure_install
-    fi
-    
-    # Install dependencies
-    install_packages
-    install_nodejs
-    install_nginx
-    install_certbot
-    
-    # Clone and setup
-    clone_repos
-    setup_panel
-    setup_daemon
-    
-    # Configure services
-    setup_nginx_config
-    setup_ssl_cert
-    create_services
+    check_prerequisites
+    select_components
+    configure_ports
+    configure_panel_name
     configure_firewall
-    
+    install_dependencies
+    build_and_configure
     print_summary
 }
 
-main "$@"
+main
