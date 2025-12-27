@@ -12,6 +12,12 @@ export interface AuthRequest extends Request {
     };
 }
 
+interface JWTPayload {
+    userId: string;
+    email: string;
+    tokenVersion?: number;
+}
+
 export const authenticate = async (
     req: AuthRequest,
     _res: Response,
@@ -27,10 +33,7 @@ export const authenticate = async (
         const token = authHeader.substring(7);
         const secret = process.env.JWT_SECRET || 'fallback-secret';
 
-        const decoded = jwt.verify(token, secret) as {
-            userId: string;
-            email: string;
-        };
+        const decoded = jwt.verify(token, secret) as JWTPayload;
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
@@ -39,6 +42,8 @@ export const authenticate = async (
                 email: true,
                 username: true,
                 role: true,
+                tokenVersion: true,
+                lockedUntil: true,
             },
         });
 
@@ -46,11 +51,28 @@ export const authenticate = async (
             throw new AppError(401, 'User not found');
         }
 
-        req.user = user;
+        // Check if user account is locked
+        if (user.lockedUntil && new Date() < user.lockedUntil) {
+            throw new AppError(423, 'Account is locked');
+        }
+
+        // Check token version - if user logged out all devices, old tokens are invalid
+        if (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.tokenVersion) {
+            throw new AppError(401, 'Token has been revoked. Please log in again.');
+        }
+
+        req.user = {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role,
+        };
         next();
     } catch (error) {
         if (error instanceof jwt.JsonWebTokenError) {
             next(new AppError(401, 'Invalid token'));
+        } else if (error instanceof jwt.TokenExpiredError) {
+            next(new AppError(401, 'Token has expired'));
         } else {
             next(error);
         }
@@ -77,4 +99,42 @@ export const requireModerator = (
         return next(new AppError(403, 'Moderator access required'));
     }
     next();
+};
+
+// Optional authentication - doesn't throw if no token
+export const optionalAuth = async (
+    req: AuthRequest,
+    _res: Response,
+    next: NextFunction
+) => {
+    try {
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return next();
+        }
+
+        const token = authHeader.substring(7);
+        const secret = process.env.JWT_SECRET || 'fallback-secret';
+
+        const decoded = jwt.verify(token, secret) as JWTPayload;
+
+        const user = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                role: true,
+            },
+        });
+
+        if (user) {
+            req.user = user;
+        }
+        next();
+    } catch {
+        // Token is invalid, but that's okay for optional auth
+        next();
+    }
 };
