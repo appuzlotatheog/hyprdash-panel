@@ -65,7 +65,7 @@ PORT=3001
 
 ## Daemon
 
-This panel requires the [HyprDash Daemon](https://github.com/your-repo/hyprdash-daemon) to be installed on each node.
+This panel requires the [HyprDash Daemon](https://github.com/appuzlotatheog/hyprdash-daemon) to be installed on each node.
 
 ## License
 
