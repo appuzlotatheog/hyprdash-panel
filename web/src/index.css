@@ -1,0 +1,105 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Cyber-Industrial Variables */
+  --bg-background: #000000;
+  --bg-surface: #0A0A0A;
+  --bg-card: #0A0A0A;
+  --bg-card-hover: #111111;
+
+  --border-primary: #262626;
+  --border-subtle: #1F1F1F;
+  --border-accent: #3B82F6;
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #52525B;
+
+  --accent-primary: #3B82F6;
+
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  background-color: var(--bg-background);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* Components */
+@layer components {
+  .card {
+    @apply bg-dark-900 border border-dark-700 rounded-sm p-6 transition-colors duration-200;
+    box-shadow: none;
+  }
+
+  .card:hover {
+    @apply bg-dark-800 border-dark-600;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-sm font-medium transition-all duration-200 text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-hover border border-transparent shadow-glow-sm hover:shadow-glow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent text-dark-200 border border-dark-700 hover:text-white hover:border-dark-500 hover:bg-dark-800;
+  }
+
+  .btn-danger {
+    @apply bg-transparent text-red-500 border border-red-900/30 hover:bg-red-950/30 hover:border-red-800;
+  }
+
+  .input {
+    @apply bg-dark-900 border border-dark-700 rounded-sm px-3 py-2 text-white placeholder-dark-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all duration-200 font-mono text-sm;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-sm text-dark-400 hover:text-white transition-colors duration-200 border border-transparent hover:border-dark-700 hover:bg-dark-900;
+  }
+
+  .nav-item.active {
+    @apply text-white bg-dark-900 border-dark-700;
+  }
+}
+
+/* Utilities */
+.glass {
+  @apply bg-black/80 backdrop-blur-md border-b border-dark-700;
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
