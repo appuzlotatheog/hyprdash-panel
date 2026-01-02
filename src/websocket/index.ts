@@ -258,6 +258,15 @@ function handleDaemonConnection(io: SocketServer, socket: AuthenticatedSocket) {
     socket.on('files:error', (data: any) => {
         io.emit('files:error', data);
     });
+
+    // Handle server query response
+    socket.on('server:query:response', (data: any) => {
+        io.emit('server:query:response', data);
+    });
+
+    socket.on('server:query:error', (data: any) => {
+        io.emit('server:query:error', data);
+    });
 }
 
 async function handleUserConnection(io: SocketServer, socket: AuthenticatedSocket) {

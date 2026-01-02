@@ -20,6 +20,17 @@ export default function ServerConsole({
 }: ServerConsoleProps) {
     const consoleRef = useRef<HTMLDivElement>(null)
 
+    // Strip ANSI escape codes from text
+    const stripAnsi = (text: string): string => {
+        // Remove all ANSI escape sequences including color codes
+        // eslint-disable-next-line no-control-regex
+        return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+            // Also handle the raw escape code format [38;2;...m etc
+            .replace(/\[[\d;]*m/g, '')
+            // Remove any remaining escape characters
+            .replace(/\x1B/g, '');
+    }
+
     // Auto-scroll
     useEffect(() => {
         if (consoleRef.current) {
@@ -76,10 +87,12 @@ export default function ServerConsole({
                     </div>
                 ) : (
                     lines.map((line, i) => {
-                        const lowerLine = line.toLowerCase()
+                        // Strip ANSI codes first
+                        const cleanLine = stripAnsi(line)
+                        const lowerLine = cleanLine.toLowerCase()
                         let colorClass = 'text-dark-300' // Default grey
 
-                        if (line.startsWith('>')) colorClass = 'text-white font-bold'
+                        if (cleanLine.startsWith('>')) colorClass = 'text-white font-bold'
                         else if (lowerLine.includes('error') || lowerLine.includes('fatal') || lowerLine.includes('exception')) colorClass = 'text-red-500'
                         else if (lowerLine.includes('warn')) colorClass = 'text-amber-500'
                         else if (lowerLine.includes('info')) colorClass = 'text-blue-400'
@@ -90,7 +103,7 @@ export default function ServerConsole({
                                 <span className="opacity-20 mr-3 select-none text-[10px] text-dark-500">
                                     {new Date().toLocaleTimeString([], { hour12: false })}
                                 </span>
-                                {line}
+                                {cleanLine}
                             </div>
                         )
                     })

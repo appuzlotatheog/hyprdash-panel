@@ -15,7 +15,11 @@ import {
     MemoryStick,
     HardDrive,
     Activity,
-    Users
+    Users,
+    Gamepad2,
+    Package,
+    Database,
+    Sparkles
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { serversApi } from '../services/api'
@@ -26,15 +30,24 @@ import BackupManager from '../components/BackupManager'
 import ScheduleManager from '../components/ScheduleManager'
 import ServerConsole from '../components/ServerConsole'
 import SubuserManager from '../components/SubuserManager'
+import { DatabaseManager } from '../components/server/DatabaseManager'
+import { PluginManager } from '../components/server/PluginManager'
+import { PlayerStats } from '../components/server/PlayerStats'
+import AIChat from '../components/AIChat'
 
 const tabs = [
     { id: 'console', label: 'Console', icon: Terminal },
+    { id: 'ai', label: 'AI Assistant', icon: Sparkles },
     { id: 'files', label: 'Files', icon: FileText },
+    { id: 'players', label: 'Players', icon: Gamepad2 },
+    { id: 'plugins', label: 'Plugins', icon: Package },
+    { id: 'databases', label: 'Databases', icon: Database },
     { id: 'backups', label: 'Backups', icon: Archive },
     { id: 'schedules', label: 'Schedules', icon: Clock },
-    { id: 'users', label: 'Users', icon: Users },
+    { id: 'users', label: 'Subusers', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
 ]
+
 
 export default function ServerView() {
     const { id } = useParams<{ id: string }>()
@@ -323,7 +336,16 @@ export default function ServerView() {
                     />
                 )}
 
+                {activeTab === 'ai' && (
+                    <div className="h-[600px]">
+                        <AIChat serverId={id!} serverName={server.name} />
+                    </div>
+                )}
+
                 {activeTab === 'files' && <FileManager serverId={id!} />}
+                {activeTab === 'players' && <PlayerStats />}
+                {activeTab === 'plugins' && <PluginManager />}
+                {activeTab === 'databases' && <DatabaseManager />}
                 {activeTab === 'backups' && <BackupManager serverId={id!} />}
                 {activeTab === 'schedules' && <ScheduleManager serverId={id!} />}
                 {activeTab === 'users' && <SubuserManager serverId={id!} isOwner={isOwner} />}
@@ -381,4 +403,3 @@ export default function ServerView() {
         </div>
     )
 }
-

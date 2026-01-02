@@ -7,34 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  MODERATOR
-  USER
-}
-
-enum ServerStatus {
-  OFFLINE
-  STARTING
-  RUNNING
-  STOPPING
-}
-
-enum BackupStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-}
+// Note: SQLite doesn't support enums, so we use String types instead
+// Role: ADMIN, MODERATOR, USER
+// ServerStatus: OFFLINE, STARTING, RUNNING, STOPPING
+// BackupStatus: PENDING, IN_PROGRESS, COMPLETED, FAILED
 
 model User {
   id                    String    @id @default(uuid())
   email                 String    @unique
   username              String    @unique
   password              String
-  role                  Role      @default(USER)
+  role                  String    @default("USER")
   twoFactorEnabled      Boolean   @default(false) @map("two_factor_enabled")
   twoFactorSecret       String?   @map("two_factor_secret")
+  groqApiKey            String?   @map("groq_api_key") // Custom Groq API key for AI features
   
   // Security fields
   failedLoginAttempts   Int       @default(0) @map("failed_login_attempts")
@@ -111,6 +97,7 @@ model Node {
   servers     Server[]
   allocations Allocation[]
   mounts      Mount[]
+  databaseHosts DatabaseHost[]
 
   @@map("nodes")
 }
@@ -183,7 +170,7 @@ model Server {
   startup         String       // Startup command (from egg or custom)
   dockerImage     String?      @map("docker_image") // Selected docker image
   installed       Boolean      @default(false) // Whether installation completed
-  status          ServerStatus @default(OFFLINE)
+  status          String       @default("OFFLINE")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
@@ -196,6 +183,7 @@ model Server {
   backups     Backup[]
   schedules   Schedule[]
   mounts      ServerMount[]
+  databases   Database[]
 
   @@map("servers")
 }
@@ -231,7 +219,7 @@ model Backup {
   serverId    String       @map("server_id")
   name        String
   size        BigInt?      // Size in bytes
-  status      BackupStatus @default(PENDING)
+  status      String       @default("PENDING")
   checksum    String?
   storagePath String?      @map("storage_path")
   completedAt DateTime?    @map("completed_at")
@@ -319,4 +307,64 @@ model Invitation {
   inviter     User     @relation("InvitedByUser", fields: [invitedBy], references: [id], onDelete: Cascade)
 
   @@map("invitations")
+}
+
+model DatabaseHost {
+  id        String   @id @default(uuid())
+  name      String
+  host      String
+  port      Int
+  username  String
+  password  String
+  nodeId    String?  @map("node_id")
+  
+  node      Node?    @relation(fields: [nodeId], references: [id])
+  databases Database[]
+
+  @@map("database_hosts")
+}
+
+model Database {
+  id             String       @id @default(uuid())
+  serverId       String       @map("server_id")
+  hostId         String       @map("host_id")
+  database       String
+  username       String
+  password       String
+  remote         String       @default("%")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  server         Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  host           DatabaseHost @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@map("databases")
+}
+
+// AI Assistant Models
+model AIConversation {
+  id        String   @id @default(uuid())
+  serverId  String   @map("server_id")
+  userId    String   @map("user_id")
+  messages  String   // JSON array of messages
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  actions   AIAction[]
+
+  @@map("ai_conversations")
+}
+
+model AIAction {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  type           String   // download_plugin, modify_config, etc.
+  description    String
+  data           String   // JSON action data
+  status         String   @default("pending") // pending, approved, executed, rejected, failed
+  result         String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_actions")
 }

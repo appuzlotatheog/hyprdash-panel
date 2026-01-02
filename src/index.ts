@@ -25,19 +25,28 @@ import { prisma } from './lib/prisma.js';
 const app = express();
 const httpServer = createServer(app);
 
-// Socket.IO setup
+// Socket.IO setup - allow all origins in development
+const corsOrigin = process.env.NODE_ENV === 'production'
+    ? (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    : true; // Allow all origins in development
+
 const io = new SocketServer(httpServer, {
     cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+        origin: corsOrigin,
         methods: ['GET', 'POST'],
         credentials: true,
     },
+    pingTimeout: 60000,
+    pingInterval: 25000,
 });
+app.set('io', io);
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigin,
     credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -69,12 +78,22 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/mounts', mountsRouter);
 app.use('/api/invitations', invitationsRouter);
+app.use('/api/query', (await import('./api/routes/query.routes.js')).queryRouter);
+app.use('/api/plugins', (await import('./api/routes/plugins.routes.js')).pluginsRouter);
+app.use('/api/servers', (await import('./api/routes/plugins.routes.js')).pluginsRouter); // Also mount under /servers for :id/plugins/install
+app.use('/api/database-hosts', (await import('./api/routes/database-hosts.routes.js')).databaseHostsRouter);
+app.use('/api/servers', (await import('./api/routes/databases.routes.js')).databasesRouter); // Mounted under /api/servers for :id/databases pattern
+app.use('/api/ai', (await import('./api/routes/ai.routes.js')).aiRouter); // AI Assistant routes
 
 // Error handler
 app.use(errorHandler);
 
 // WebSocket setup
 setupWebSocket(io);
+
+// Initialize AI actions with socket server
+import { setSocketServer } from './services/ai-actions.js';
+setSocketServer(io);
 
 // Graceful shutdown
 const shutdown = async () => {

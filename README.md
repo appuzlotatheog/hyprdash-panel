@@ -1,71 +1,136 @@
-# 🎮 HyprDash Panel
+# HyprDash - Game Server Management Panel
 
-A modern game server management panel with a beautiful web interface. Backend API + React frontend.
-
-## Features
-
-- 🔐 JWT Authentication with 2FA
-- 👥 User Management with Roles & Subusers
-- 🖥️ Server Management (create, start, stop, restart)
-- 📁 File Manager with built-in editor
-- 💾 Backup System
-- ⏰ Scheduled Tasks
-- 📊 Real-time Monitoring
-- 🎨 Customizable Branding
+A modern, beautiful game server management panel inspired by Pterodactyl.
 
 ## Quick Start
 
+### Requirements
+- Node.js 18+ 
+- npm or yarn
+
+### 1. Panel Setup
+
 ```bash
+cd hyprdash-panel
+
+# Copy environment file
+cp .env.example .env
+
+# Edit .env and set:
+# - JWT_SECRET (generate a random string)
+# - DATABASE_URL (keep as SQLite for development)
+
 # Install dependencies
 npm install
-cd web && npm install && cd ..
-
-# Configure
-cp .env.example .env
-# Edit .env with your database URL
 
 # Setup database
-npm run db:generate
-npm run db:push
-npm run db:seed
+npx prisma db push
+npx tsx prisma/seed.ts
 
-# Development
+# Start panel
 npm run dev
+```
 
-# Production
+### 2. Web Frontend Setup
+
+```bash
+cd hyprdash-panel/web
+
+# Copy environment file
+cp .env.example .env
+
+# Edit .env and set VITE_API_URL to your panel URL
+
+# Install dependencies
+npm install
+
+# Start frontend
+npm run dev
+```
+
+### 3. Daemon Setup
+
+```bash
+cd hyprdash-daemon
+
+# Copy environment file
+cp .env.example .env
+
+# Edit .env and set:
+# - PANEL_URL (your panel URL)
+# - NODE_TOKEN (get this from panel after creating a node)
+
+# Install dependencies
+npm install
+
+# Start daemon
+npm run dev
+```
+
+## First Time Setup
+
+1. **Start the panel** (`npm run dev` in hyprdash-panel)
+2. **Start the web frontend** (`npm run dev` in hyprdash-panel/web)
+3. **Create admin account** - Visit http://localhost:5173 and register
+4. **Create a Node** - Go to Nodes → Add Node
+5. **Copy the Node Token** - You'll need this for the daemon
+6. **Configure & start the daemon** with the node token
+7. **Create a Server** - Go to Servers → Create Server
+
+## Production Deployment
+
+### Panel
+```bash
+# Build
 npm run build
-npm start
+
+# Run with PM2
+pm2 start dist/index.js --name "hyprdash-panel"
 ```
 
-## Project Structure
+### Web Frontend
+```bash
+# Build
+npm run build
 
-```
-hyprdash-panel/
-├── src/                # Backend API (Express + TypeScript)
-│   ├── api/routes/     # REST endpoints
-│   ├── services/       # Business logic
-│   ├── middleware/     # Auth, error handling
-│   └── websocket/      # Socket.IO
-├── prisma/             # Database schema
-├── web/                # React Frontend
-│   └── src/
-│       ├── components/
-│       ├── pages/
-│       └── services/
-└── deploy/             # Installation scripts
+# Serve with nginx or any static file server
+# Files are in the 'dist' folder
 ```
 
-## Environment Variables
+### Daemon
+```bash
+# Build
+npm run build
 
-```env
-DATABASE_URL="file:./dev.db"
-JWT_SECRET="your-secret-key"
-PORT=3001
+# Run with PM2
+pm2 start dist/index.js --name "hyprdash-daemon"
 ```
 
-## Daemon
+## Features
 
-This panel requires the [HyprDash Daemon](https://github.com/appuzlotatheog/hyprdash-daemon) to be installed on each node.
+- 🎮 Support for multiple game types (Minecraft, Terraria, CS2, Rust, etc.)
+- 🤖 Discord bot hosting (Node.js & Python)
+- 📁 File manager with code editor
+- 💾 Automatic backups
+- 📊 Resource monitoring
+- 👥 Multi-user support with permissions
+- 🔐 Two-factor authentication
+- 🔌 Plugin manager (Modrinth & CurseForge)
+
+## Default Eggs Included
+
+- Minecraft: Vanilla, Paper, Forge, Fabric, Purpur, Bedrock
+- Terraria
+- Counter-Strike 2
+- Rust
+- ARK: Survival Evolved
+- Valheim
+- Generic Source Engine
+- Discord Bot: Node.js & Python
+- Node.js Application
+- Python Application
+- Bun Application
+- Generic Application
 
 ## License
 
