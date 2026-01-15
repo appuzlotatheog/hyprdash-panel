@@ -26,7 +26,7 @@ A modern, high-performance game server management panel featuring a premium UI, 
 
 1.  **Clone the repository**
     ```bash
-    git clone <your-repo-url>
+    git clone https://github.com/appuzlotatheog/hyprdash-panel.git
     cd hyprdash-panel
     ```
 
