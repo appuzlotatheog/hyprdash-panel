@@ -14,6 +14,8 @@ import Eggs from './pages/Eggs'
 import EggEditor from './pages/EggEditor'
 import AuditLogs from './pages/admin/AuditLogs'
 import Mounts from './pages/admin/Mounts'
+import NodeHealth from './pages/admin/NodeHealth'
+import Webhooks from './pages/admin/Webhooks'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -50,6 +52,8 @@ function App() {
                 <Route path="admin/eggs/:id" element={<EggEditor />} />
                 <Route path="admin/mounts" element={<Mounts />} />
                 <Route path="admin/audit-logs" element={<AuditLogs />} />
+                <Route path="admin/node-health" element={<NodeHealth />} />
+                <Route path="admin/webhooks" element={<Webhooks />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

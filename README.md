@@ -1,249 +1,75 @@
-# 🚀 HyprDash - Game Server Management Panel
+# HyprDash Panel
 
-A modern, beautiful game server management panel inspired by Pterodactyl. Built with Node.js, React, and TypeScript.
+A modern, high-performance game server management panel featuring a premium UI, AI assistance, and robust server controls.
 
-> **Daemon Required**: This panel requires the [HyprDash Daemon](https://github.com/appuzlotatheog/hyprdash-daemon) to manage game servers.
+## Features
 
----
+-   **Premium UI/UX**: Built with React, Tailwind CSS, and glassmorphism design.
+-   **AI Assistant**: Integrated "Master Control Program" (MCP) for natural language server management using Groq AI.
+-   **Real-time Control**: Socket.IO based console, stats, and file operations.
+-   **Security**: Role-based access control, Two-Factor Authentication (2FA), and secure file handling.
+-   **Scalability**: Supports multiple nodes (daemons) and database hosts.
 
-## ✨ Features
+## Tech Stack
 
-- 🎮 **Multi-Game Support** - Minecraft, Terraria, CS2, Rust, ARK, Valheim, and more
-- 🤖 **AI Assistant** - Natural language server management with Groq AI
-- 📁 **File Manager** - Full file browser with code editor
-- 💾 **Automatic Backups** - Scheduled backups with one-click restore
-- 📊 **Resource Monitoring** - Real-time CPU, RAM, and disk usage
-- 👥 **Multi-User** - Role-based permissions and subuser system
-- 🔐 **Security** - Two-factor authentication and session management
-- 🔌 **Plugin Manager** - Search and install plugins from Modrinth
-- 🎨 **Modern UI** - Dark theme with beautiful design
+-   **Backend**: Node.js, Express, Socket.IO, Prisma ORM
+-   **Frontend**: React, Vite, Tailwind CSS, TanStack Query
+-   **Database**: MySQL / MariaDB (via Prisma)
 
----
+## Prerequisites
 
-## 📋 Requirements
+-   Node.js v16 or higher
+-   MySQL or MariaDB server
+-   HyprDash Daemon (running on target nodes)
 
-- **Node.js 18+**
-- **npm** or **yarn**
-- **SQLite** (development) or **PostgreSQL** (production)
+## Installation
 
----
+1.  **Clone the repository**
+    ```bash
+    git clone <your-repo-url>
+    cd hyprdash-panel
+    ```
 
-## 🛠️ Development Setup
+2.  **Install Dependencies**
+    ```bash
+    npm install
+    cd web && npm install && cd ..
+    ```
 
-### 1. Clone the Repository
+3.  **Configuration**
+    Copy `.env` example (create one if missing):
+    ```env
+    PORT=3001
+    DATABASE_URL="mysql://user:password@localhost:3306/hyprdash"
+    JWT_SECRET="your-super-secret-key-change-this"
+    CORS_ORIGIN="http://localhost:5173"
+    GROQ_API_KEY="your-groq-api-key"
+    ```
 
-```bash
-git clone https://github.com/appuzlotatheog/hyprdash-panel.git
-cd hyprdash-panel
-```
+4.  **Database Setup**
+    ```bash
+    npm run db:push
+    npm run db:seed  # Optional: Seeds default admin (admin@example.com / admin123)
+    ```
 
-### 2. Configure Environment
+## Running the Application
 
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env and configure:
-nano .env
-```
-
-Required environment variables:
-```env
-PORT=3000
-DATABASE_URL="file:./dev.db"
-JWT_SECRET="your-super-secret-jwt-key-change-me"
-GROQ_API_KEY="your-groq-api-key"  # Get from https://console.groq.com/
-```
-
-### 3. Install Dependencies & Setup Database
-
-```bash
-# Install dependencies
-npm install
-
-# Create database tables
-npx prisma db push
-
-# Seed with default eggs (Minecraft, Terraria, etc.)
-npx tsx prisma/seed.ts
-```
-
-### 4. Start the Panel
-
+### Development Mode
+Runs both backend and frontend in watch mode.
 ```bash
 npm run dev
 ```
+-   Backend: `http://localhost:3001`
+-   Frontend: `http://localhost:5173`
 
-Panel API runs on `http://localhost:3000`
-
-### 5. Start the Web Frontend
-
+### Production Build
 ```bash
-cd web
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Frontend runs on `http://localhost:5173`
-
----
-
-## 🌐 Production Deployment
-
-### Option 1: VPS/Dedicated Server
-
-#### 1. Install Dependencies
-
-```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx
-
-# Install PM2 globally
-sudo npm install -g pm2
-```
-
-#### 2. Clone and Build Panel
-
-```bash
-cd /var/www
-git clone https://github.com/appuzlotatheog/hyprdash-panel.git
-cd hyprdash-panel
-
-# Configure environment
-cp .env.example .env
-nano .env  # Set production values
-
-# Install and build
-npm install
 npm run build
-
-# Setup database
-npx prisma db push
-npx tsx prisma/seed.ts
-
-# Start with PM2
-pm2 start dist/index.js --name "hyprdash-panel"
-pm2 save
-pm2 startup
+npm start
 ```
 
-#### 3. Build Frontend
+## AI Configuration
+To enable the AI MCP features, ensure `GROQ_API_KEY` is set in your `.env` file. The AI can manage databases, file operations, and server power states.
 
-```bash
-cd web
-cp .env.example .env
-nano .env  # Set VITE_API_URL to your domain
-
-npm install
-npm run build
-```
-
-#### 4. Configure NGINX
-
-```nginx
-# /etc/nginx/sites-available/hyprdash
-server {
-    listen 80;
-    server_name panel.yourdomain.com;
-
-    # Frontend (static files)
-    location / {
-        root /var/www/hyprdash-panel/web/dist;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # API Proxy
-    location /api {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # WebSocket Proxy
-    location /socket.io {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-    }
-}
-```
-
-```bash
-# Enable site
-sudo ln -s /etc/nginx/sites-available/hyprdash /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-
-# Add SSL
-sudo certbot --nginx -d panel.yourdomain.com
-```
-
-### Option 2: Docker (Coming Soon)
-
-Docker support will be added in a future release.
-
----
-
-## 🔧 First Time Setup
-
-1. **Start Panel** - `npm run dev`
-2. **Start Frontend** - `cd web && npm run dev`
-3. **Create Account** - Visit `http://localhost:5173` and register
-4. **Create Node** - Go to Admin → Nodes → Add Node
-5. **Copy Node Token** - Save this for the daemon
-6. **Setup Daemon** - Follow instructions at [hyprdash-daemon](https://github.com/appuzlotatheog/hyprdash-daemon)
-7. **Create Server** - Go to Servers → Create Server
-
----
-
-## 🎮 Supported Games (Default Eggs)
-
-| Game | Server Types |
-|------|--------------|
-| Minecraft | Vanilla, Paper, Spigot, Forge, Fabric, Purpur, Bedrock |
-| Terraria | tShock |
-| Counter-Strike 2 | Dedicated Server |
-| Rust | Dedicated Server |
-| ARK: Survival Evolved | Dedicated Server |
-| Valheim | Dedicated Server |
-| Discord Bots | Node.js, Python |
-| Generic | Node.js, Python, Bun |
-
----
-
-## 📁 Project Structure
-
-```
-hyprdash-panel/
-├── src/                    # Backend source
-│   ├── api/routes/         # API endpoints
-│   ├── services/           # Business logic
-│   ├── middleware/         # Auth, validation
-│   └── lib/                # Utilities
-├── web/                    # React frontend
-│   ├── src/components/     # UI components
-│   ├── src/pages/          # Page components
-│   └── src/services/       # API clients
-├── prisma/                 # Database schema
-└── deploy/                 # Deployment files
-```
-
----
-
-## 🔗 Related
-
-- **Daemon**: [https://github.com/appuzlotatheog/hyprdash-daemon](https://github.com/appuzlotatheog/hyprdash-daemon)
-
----
-
-## 📄 License
-
-MIT License - Feel free to use, modify, and distribute.
+## License
+MIT

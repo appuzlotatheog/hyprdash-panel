@@ -61,7 +61,7 @@ export interface AIMessage {
 
 export interface AIAction {
     id: string;
-    type: 'download_plugin' | 'modify_config' | 'execute_command' | 'server_control' | 'create_file' | 'delete_file' | 'read_file' | 'install_plugin' | 'search_plugins';
+    type: 'download_plugin' | 'modify_config' | 'execute_command' | 'server_control' | 'create_file' | 'delete_file' | 'read_file' | 'install_plugin' | 'search_plugins' | 'database_op' | 'optimize' | 'list_directory' | 'inspect_file' | 'change_version';
     description: string;
     data: Record<string, any>;
     status: 'pending' | 'approved' | 'executed' | 'rejected' | 'failed';
@@ -95,6 +95,7 @@ function buildSystemPrompt(context: AIContext): string {
     return `# HyprDash AI Server Assistant
 
 You are an advanced AI assistant specialized in game server management. You have FULL access to control, configure, and optimize game servers through the HyprDash panel.
+You are the "Master Control Program" (MCP) for this server.
 
 ## Current Date: ${currentDate}
 
@@ -164,6 +165,13 @@ You can perform actions by including ACTION markers in your response. Format:
 11. **change_version** - Change server software version
     \`[ACTION:change_version:Update to Paper 1.21.4:{"software":"paper","version":"1.21.4"}]\`
     Supported: paper, purpur, velocity
+
+12. **database_op** - Manage databases (create, delete, list)
+    \`[ACTION:database_op:Create new MySQL database:{"action":"create","name":"economy"}]\`
+    Actions: create, delete, list
+
+13. **optimize** - Analyze server and suggest optimizations
+    \`[ACTION:optimize:Check server performance:{"target":"all"}]\`
 
 ## SAFETY PROTOCOLS (CRITICAL)
 
@@ -482,9 +490,6 @@ export async function executeAction(
             case 'search_plugins':
                 result = await executeSearchPlugins(data);
                 break;
-            case 'smart_restart':
-                result = await aiActions.smartRestart(serverId);
-                break;
             case 'list_directory':
                 result = await aiActions.listDirectory(serverId, data.path || '/');
                 break;
@@ -493,6 +498,12 @@ export async function executeAction(
                 break;
             case 'change_version':
                 result = await aiActions.changeServerVersion(serverId, data.software, data.version);
+                break;
+            case 'database_op':
+                result = await executeDatabaseOp(serverId, data);
+                break;
+            case 'optimize':
+                result = await aiActions.optimizeServer(serverId);
                 break;
             default:
                 throw new Error(`Unknown action type: ${action.type}`);
@@ -605,6 +616,14 @@ async function executeSearchPlugins(
 ): Promise<string> {
     console.log(`[AI] Searching plugins: ${data.query} on ${data.platform || 'modrinth'}`);
     return aiActions.searchPlugins(data.query, data.platform);
+}
+
+async function executeDatabaseOp(
+    serverId: string,
+    data: { action: 'create' | 'delete' | 'list' | 'rotate_password'; name?: string; dbId?: string }
+): Promise<string> {
+    console.log(`[AI] Database op: ${data.action}`);
+    return aiActions.manageDatabase(serverId, data.action, data);
 }
 
 // Get conversation history

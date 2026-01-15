@@ -40,7 +40,7 @@ export default function AuditLogs() {
 
     const { data, isLoading } = useQuery({
         queryKey: ['audit-logs', page, userId],
-        queryFn: () => api.get<AuditResponse>(`/audit-logs?page=${page}&limit=20${userId ? `&userId=${userId}` : ''}`),
+        queryFn: () => api.get<AuditResponse>(`/audit?page=${page}&limit=20${userId ? `&userId=${userId}` : ''}`),
     })
 
     const logs = data?.logs || []

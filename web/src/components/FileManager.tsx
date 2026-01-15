@@ -28,7 +28,7 @@ interface FileInfo {
     path?: string
     isDirectory: boolean
     size: number
-    modified: Date
+    modifiedAt: Date
 }
 
 interface FileManagerProps {
@@ -110,9 +110,9 @@ export default function FileManager({ serverId }: FileManagerProps) {
 
         try {
             const fileList = await socketService.listFiles(serverId, currentPath)
-            setFiles(fileList.map(f => ({
+            setFiles(fileList.map((f: any) => ({
                 ...f,
-                modified: new Date(f.modified)
+                modifiedAt: new Date(f.modifiedAt || f.modified || Date.now())
             })))
         } catch (err: any) {
             setError(err.message || 'Failed to load files')
@@ -347,9 +347,17 @@ export default function FileManager({ serverId }: FileManagerProps) {
             for (const sourcePath of clipboard.files) {
                 const filename = sourcePath.split('/').pop() || 'file'
                 const destPath = getFullPath(clipboard.action === 'copy' ? `Copy of ${filename}` : filename)
-                await socketService.copyFile(serverId, sourcePath, destPath)
+                // Use renameFile endpoint for move, for copy we'd need a dedicated endpoint
+                if (clipboard.action === 'cut') {
+                    await socketService.renameFile(serverId, sourcePath, destPath)
+                } else {
+                    // For copy, we'll just show an info message since copy isn't implemented
+                    toast.info('Copy file feature coming soon')
+                }
             }
-            toast.success(`Pasted ${clipboard.files.length} file(s)`)
+            if (clipboard.action === 'cut') {
+                toast.success(`Moved ${clipboard.files.length} file(s)`)
+            }
             setClipboard(null)
             loadFiles()
         } catch (err: any) {
@@ -583,7 +591,7 @@ export default function FileManager({ serverId }: FileManagerProps) {
                                             {file.isDirectory ? '—' : formatSize(file.size)}
                                         </td>
                                         <td className="p-3 text-dark-500 text-xs hidden md:table-cell">
-                                            {new Date(file.modified).toLocaleDateString()}
+                                            {new Date(file.modifiedAt).toLocaleDateString()}
                                         </td>
                                         <td className="p-3 text-right">
                                             <button

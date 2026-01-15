@@ -8,6 +8,7 @@ interface ServerConsoleProps {
     onSendCommand: (e: React.FormEvent) => void
     status: string
     installProgress: { progress: number; message: string } | null
+    socketConnected?: boolean
 }
 
 export default function ServerConsole({
@@ -16,7 +17,8 @@ export default function ServerConsole({
     onCommandChange,
     onSendCommand,
     status,
-    installProgress
+    installProgress,
+    socketConnected = true
 }: ServerConsoleProps) {
     const consoleRef = useRef<HTMLDivElement>(null)
 
@@ -53,6 +55,12 @@ export default function ServerConsole({
                         <div className={`w-1.5 h-1.5 rounded-full ${status === 'RUNNING' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
                         <span className="text-[10px] text-dark-300 uppercase">{status}</span>
                     </div>
+                    {!socketConnected && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 rounded-sm border border-amber-500/20">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="text-[10px] text-amber-400 uppercase">Reconnecting...</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

@@ -188,3 +188,25 @@ export const settingsApi = {
     testSmtp: (email: string) => api.post('/settings/smtp/test', { email }),
 }
 
+// Audit Logs API
+export const auditApi = {
+    list: (limit?: number, page?: number) =>
+        api.get<{ logs: any[], total: number, page: number, totalPages: number }>
+            (`/audit?limit=${limit || 20}&page=${page || 1}`),
+}
+
+// Dashboard Stats API
+export const dashboardApi = {
+    getStats: () => api.get<{
+        totalServers: number
+        runningServers: number
+        totalNodes: number
+        onlineNodes: number
+        totalUsers: number
+        totalMemory: number
+        usedMemory: number
+        totalDisk: number
+        usedDisk: number
+    }>('/dashboard/stats'),
+}
+

@@ -14,19 +14,24 @@ class SocketService {
     private requestId = 0
     private subscribedServers = new Set<string>()
     private subscribedNodes = new Set<string>()
+    private connectionCallbacks: ((connected: boolean) => void)[] = []
+    private reconnectAttempts = 0
 
     connect() {
         const token = useAuthStore.getState().token
         if (!token || this.socket?.connected) return
 
-        // Connect to the panel API server
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-        console.log('[Socket] Connecting to:', apiUrl)
+        // In development, use relative URL to leverage Vite proxy
+        // In production, use VITE_API_URL env var or same origin
+        const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : window.location.origin)
+        console.log('[Socket] Connecting to:', apiUrl || 'same origin (via proxy)')
 
         this.socket = io(apiUrl, {
+            path: '/socket.io',
             auth: { token },
             reconnection: true,
             reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
             reconnectionAttempts: Infinity,
             timeout: 20000,
             transports: ['websocket', 'polling'],
@@ -34,9 +39,13 @@ class SocketService {
 
         this.socket.on('connect', () => {
             console.log('[Socket] Connected!')
+            this.reconnectAttempts = 0
+            this.connectionCallbacks.forEach(cb => cb(true))
             // Resubscribe on reconnect
             this.subscribedServers.forEach(id => {
                 this.socket?.emit('server:subscribe', { serverId: id })
+                // Request console history on reconnect
+                this.socket?.emit('server:console:history', { serverId: id })
             })
             this.subscribedNodes.forEach(id => {
                 this.socket?.emit('node:subscribe', { nodeId: id })
@@ -45,6 +54,12 @@ class SocketService {
 
         this.socket.on('disconnect', (reason) => {
             console.log('[Socket] Disconnected:', reason)
+            this.connectionCallbacks.forEach(cb => cb(false))
+        })
+
+        this.socket.on('reconnect_attempt', (attempt) => {
+            this.reconnectAttempts = attempt
+            console.log('[Socket] Reconnection attempt:', attempt)
         })
 
         this.socket.on('connect_error', (error) => {
@@ -76,12 +91,42 @@ class SocketService {
         this.subscribedServers.add(serverId)
         if (this.socket?.connected) {
             this.socket.emit('server:subscribe', { serverId })
+            // Also request console history when subscribing
+            this.socket.emit('server:console:history', { serverId })
         }
     }
 
     unsubscribeFromServer(serverId: string) {
         this.subscribedServers.delete(serverId)
         this.socket?.emit('server:unsubscribe', { serverId })
+    }
+
+    // Request console history explicitly
+    requestConsoleHistory(serverId: string) {
+        if (this.socket?.connected) {
+            this.socket.emit('server:console:history', { serverId })
+        }
+    }
+
+    // Request current server status
+    requestServerStatus(serverId: string) {
+        if (this.socket?.connected) {
+            this.socket.emit('server:status:request', { serverId })
+        }
+    }
+
+    // Connection state callbacks
+    onConnectionChange(callback: (connected: boolean) => void): () => void {
+        this.connectionCallbacks.push(callback)
+        // Immediately call with current state
+        callback(this.socket?.connected || false)
+        return () => {
+            this.connectionCallbacks = this.connectionCallbacks.filter(cb => cb !== callback)
+        }
+    }
+
+    getReconnectAttempts(): number {
+        return this.reconnectAttempts
     }
 
     // Node subscriptions

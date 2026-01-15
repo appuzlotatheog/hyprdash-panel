@@ -259,7 +259,7 @@ export default function Mounts() {
                                     required
                                 >
                                     <option value="">Select a node</option>
-                                    {nodes?.map((node) => (
+                                    {Array.isArray(nodes) && nodes.map((node) => (
                                         <option key={node.id} value={node.id}>
                                             {node.name}
                                         </option>

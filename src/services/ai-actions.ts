@@ -624,6 +624,104 @@ export async function changeServerVersion(
     }
 }
 
+// Database operations
+export async function manageDatabase(
+    serverId: string,
+    action: 'create' | 'delete' | 'list' | 'rotate_password',
+    params?: { name?: string; remote?: string; dbId?: string }
+): Promise<string> {
+    const server = await prisma.server.findUnique({
+        where: { id: serverId },
+        include: { node: true }
+    });
+
+    if (!server) throw new Error('Server not found');
+
+    if (action === 'create') {
+        if (!params?.name) throw new Error('Database name required');
+
+        // Find a valid database host (prefer one on the same node, or any)
+        const host = await prisma.databaseHost.findFirst({
+            where: { nodeId: server.nodeId }
+        }) || await prisma.databaseHost.findFirst();
+
+        if (!host) throw new Error('No database host available');
+
+        const dbName = `s${server.id.split('-')[0]}_${params.name}`; // Shorter name
+        await prisma.database.create({
+            data: {
+                serverId,
+                hostId: host.id,
+                database: dbName,
+                username: dbName,
+                remote: params.remote || '%',
+                password: Math.random().toString(36).slice(-10) + '!@#',
+            }
+        });
+        return `Created database ${dbName} on host ${host.name}`;
+    }
+
+    if (action === 'list') {
+        const dbs = await prisma.database.findMany({ where: { serverId } });
+        if (dbs.length === 0) return 'No databases found.';
+        return dbs.map(d => `- ${d.database} (User: ${d.username}, Conn: ${d.remote})`).join('\n');
+    }
+
+    if (action === 'delete') {
+        if (!params?.dbId && !params?.name) throw new Error('Database ID or Name required');
+
+        let db = null;
+        if (params.dbId) {
+            db = await prisma.database.findUnique({ where: { id: params.dbId } });
+        } else if (params.name) {
+            // Try exact match or prefix match
+            db = await prisma.database.findFirst({
+                where: {
+                    serverId,
+                    OR: [
+                        { database: params.name },
+                        { database: `s${server.id.split('-')[0]}_${params.name}` }
+                    ]
+                }
+            });
+        }
+
+        if (!db) return 'Database not found.';
+        await prisma.database.delete({ where: { id: db.id } });
+        return `Deleted database ${db.database}`;
+    }
+
+    if (action === 'rotate_password') {
+        return 'Password rotation not yet implemented.';
+    }
+
+    return 'Unsupported database action';
+}
+
+// Optimization analysis
+export async function optimizeServer(serverId: string): Promise<string> {
+    const server = await prisma.server.findUnique({ where: { id: serverId } });
+    if (!server) return 'Server not found';
+
+    // In a real implementation, we would analyze metrics, startup flags, etc.
+    const recommendations = [];
+
+    if (server.memory < 4096) {
+        recommendations.push("- Memory is low (< 4GB). Consider upgrading if you have many plugins.");
+    }
+
+    // Check flags (dummy check)
+    if (!server.startup.includes("aikar")) {
+        recommendations.push("- Add Aikar's flags for better garbage collection performance.");
+    }
+
+    if (recommendations.length === 0) {
+        return "Server appears to be well-configured based on available data.";
+    }
+
+    return `Optimization Recommendations:\n${recommendations.join('\n')}\n\nShall I apply these fixes?`;
+}
+
 export default {
     readFile,
     writeFile,
@@ -642,4 +740,6 @@ export default {
     listFiles,
     getRecentLogs,
     setSocketServer,
+    manageDatabase,
+    optimizeServer
 };

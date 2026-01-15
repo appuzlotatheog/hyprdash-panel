@@ -39,7 +39,8 @@ export const DatabaseManager: React.FC = () => {
     const fetchDatabases = async () => {
         try {
             const response = await api.get(`/servers/${id}/databases`);
-            setDatabases((response as any).data);
+            const data = (response as any).data;
+            setDatabases(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Failed to fetch databases:', error);
             toast.error('Failed to fetch databases');

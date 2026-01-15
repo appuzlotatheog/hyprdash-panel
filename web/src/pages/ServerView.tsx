@@ -19,7 +19,9 @@ import {
     Gamepad2,
     Package,
     Database,
-    Sparkles
+    Sparkles,
+    Server,
+    Code
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { serversApi } from '../services/api'
@@ -33,12 +35,16 @@ import SubuserManager from '../components/SubuserManager'
 import { DatabaseManager } from '../components/server/DatabaseManager'
 import { PluginManager } from '../components/server/PluginManager'
 import { PlayerStats } from '../components/server/PlayerStats'
+import { SFTPInfo } from '../components/server/SFTPInfo'
+import { StartupEditor } from '../components/server/StartupEditor'
 import AIChat from '../components/AIChat'
 
 const tabs = [
     { id: 'console', label: 'Console', icon: Terminal },
     { id: 'ai', label: 'AI Assistant', icon: Sparkles },
     { id: 'files', label: 'Files', icon: FileText },
+    { id: 'sftp', label: 'SFTP', icon: Server },
+    { id: 'startup', label: 'Startup', icon: Code },
     { id: 'players', label: 'Players', icon: Gamepad2 },
     { id: 'plugins', label: 'Plugins', icon: Package },
     { id: 'databases', label: 'Databases', icon: Database },
@@ -56,6 +62,7 @@ export default function ServerView() {
     const [consoleLines, setConsoleLines] = useState<string[]>([])
     const [stats, setStats] = useState({ cpu: 0, memory: 0 })
     const [installProgress, setInstallProgress] = useState<{ progress: number; message: string } | null>(null)
+    const [socketConnected, setSocketConnected] = useState(false)
     const queryClient = useQueryClient()
     const navigate = useNavigate()
     const user = useAuthStore((state) => state.user)
@@ -109,6 +116,15 @@ export default function ServerView() {
 
         socketService.subscribeToServer(id)
 
+        // Track connection state
+        const unsubConnection = socketService.onConnectionChange((connected) => {
+            setSocketConnected(connected)
+            if (connected) {
+                // Request fresh status when reconnected
+                socketService.requestServerStatus(id)
+            }
+        })
+
         const unsubStatus = socketService.onServerStatus((data) => {
             if (data.serverId === id) {
                 queryClient.setQueryData(['server', id], (old: any) => ({
@@ -117,6 +133,14 @@ export default function ServerView() {
                 }))
             }
         })
+
+        // Handle console history (array of lines sent on subscribe/reconnect)
+        const handleConsoleHistory = (data: { serverId: string; lines: string[] }) => {
+            if (data.serverId === id && data.lines?.length > 0) {
+                setConsoleLines(data.lines.slice(-500))
+            }
+        }
+        socketService.getSocket()?.on('server:console:history', handleConsoleHistory)
 
         const unsubConsole = socketService.onServerConsole((data) => {
             if (data.serverId === id) {
@@ -156,7 +180,9 @@ export default function ServerView() {
 
         return () => {
             socketService.unsubscribeFromServer(id)
+            unsubConnection()
             unsubStatus()
+            socketService.getSocket()?.off('server:console:history', handleConsoleHistory)
             unsubConsole()
             unsubStats()
             unsubInstallProgress()
@@ -195,128 +221,141 @@ export default function ServerView() {
     return (
         <div className="max-w-[1600px] mx-auto space-y-6">
             {/* Header Area */}
-            <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-end border-b border-dark-800 pb-6">
-                <div>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className={`w-2 h-2 rounded-full ${status.color} shadow-[0_0_10px_rgba(0,0,0,0.5)]`} />
-                        <span className={`text-xs font-mono font-medium uppercase tracking-wider ${status.textClass}`}>{status.text}</span>
-                    </div>
-                    <h1 className="text-3xl font-semibold text-white mb-1 tracking-tight">{server.name}</h1>
-                    <p className="text-dark-400 text-sm font-mono flex items-center gap-2">
-                        <span className="text-accent">{server.node?.name}</span>
-                        <span className="text-dark-700">/</span>
-                        {server.allocation?.ip}:{server.allocation?.port}
-                    </p>
-                </div>
+            <div className="relative rounded-3xl overflow-hidden glass-panel p-6 lg:p-10 border border-white/10 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] ring-1 ring-white/5 bg-gradient-to-b from-white/5 to-black/20 backdrop-blur-2xl group transition-all duration-500 hover:shadow-[0_0_50px_rgba(59,130,246,0.1)]">
+                {/* Background decorative elements */}
+                <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 blur-[100px] rounded-full pointer-events-none -translate-y-1/2 translate-x-1/2" />
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/5 blur-[80px] rounded-full pointer-events-none translate-y-1/2 -translate-x-1/2" />
 
-                {/* Power Controls */}
-                <div className="flex items-center gap-1 bg-dark-900 p-1 rounded-sm border border-dark-700">
-                    <button
-                        onClick={() => powerMutation.mutate('start')}
-                        disabled={server.status !== 'OFFLINE' || powerMutation.isPending}
-                        className={`
-                            p-2.5 rounded-sm hover:bg-dark-800 text-emerald-500 disabled:opacity-30 disabled:hover:bg-transparent transition-all duration-200 border border-transparent hover:border-dark-700
-                            ${powerMutation.isPending && powerMutation.variables === 'start' ? 'animate-pulse bg-dark-800' : ''}
-                        `}
-                        title="Start"
-                    >
-                        <Play className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={() => powerMutation.mutate('restart')}
-                        disabled={server.status !== 'RUNNING' || powerMutation.isPending}
-                        className={`
-                            p-2.5 rounded-sm hover:bg-dark-800 text-amber-500 disabled:opacity-30 disabled:hover:bg-transparent transition-all duration-200 border border-transparent hover:border-dark-700
-                            ${powerMutation.isPending && powerMutation.variables === 'restart' ? 'animate-pulse bg-dark-800' : ''}
-                        `}
-                        title="Restart"
-                    >
-                        <RotateCcw className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={() => powerMutation.mutate('stop')}
-                        disabled={server.status !== 'RUNNING' || powerMutation.isPending}
-                        className={`
-                            p-2.5 rounded-sm hover:bg-dark-800 text-red-400 disabled:opacity-30 disabled:hover:bg-transparent transition-all duration-200 border border-transparent hover:border-dark-700
-                            ${powerMutation.isPending && powerMutation.variables === 'stop' ? 'animate-pulse bg-dark-800' : ''}
-                        `}
-                        title="Stop"
-                    >
-                        <Square className="w-5 h-5" />
-                    </button>
-                    <div className="w-px h-6 bg-dark-700 mx-1" />
-                    <button
-                        onClick={() => {
-                            if (confirm('Are you sure you want to force kill the server?')) {
-                                powerMutation.mutate('kill')
-                            }
-                        }}
-                        disabled={server.status === 'OFFLINE' || powerMutation.isPending}
-                        className={`
-                            p-2.5 rounded-sm hover:bg-red-950/30 text-red-600 disabled:opacity-30 disabled:hover:bg-transparent transition-all duration-200 border border-transparent hover:border-red-900/30
-                            ${powerMutation.isPending && powerMutation.variables === 'kill' ? 'animate-pulse bg-red-950/30' : ''}
-                        `}
-                        title="Kill"
-                    >
-                        <Skull className="w-5 h-5" />
-                    </button>
+                <div className="relative z-10 flex flex-col lg:flex-row gap-8 justify-between items-start lg:items-center">
+                    <div className="flex items-start gap-6">
+                        <div className={`
+                            w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 shadow-lg border border-white/10
+                            ${status.color.replace('bg-', 'bg-')}/10
+                        `}>
+                            <div className={`w-3 h-3 rounded-full ${status.color} shadow-[0_0_15px_currentColor] animate-pulse`} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-3 mb-2">
+                                <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider border ${status.textClass} border-current bg-current/5`}>
+                                    {status.text}
+                                </span>
+                                <span className="text-dark-400 text-xs font-mono px-2 py-0.5 rounded bg-black/30 border border-white/5">
+                                    {server.node?.name}
+                                </span>
+                            </div>
+                            <h1 className="text-4xl font-bold text-white mb-2 tracking-tight drop-shadow-sm">{server.name}</h1>
+                            <p className="text-dark-400 text-sm font-mono flex items-center gap-2 bg-black/20 w-fit px-3 py-1.5 rounded-lg border border-white/5">
+                                <span className="w-2 h-2 rounded-full bg-blue-500/50" />
+                                <span className="text-white/80">{server.allocation?.ip}</span>
+                                <span className="text-dark-600">:</span>
+                                <span className="text-blue-400">{server.allocation?.port}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Power Controls */}
+                    <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-lg">
+                        <button
+                            onClick={() => powerMutation.mutate('start')}
+                            disabled={server.status !== 'OFFLINE' || powerMutation.isPending}
+                            className={`
+                                p-3 rounded-lg transition-all duration-300 group relative overflow-hidden
+                                ${powerMutation.isPending && powerMutation.variables === 'start' ? 'bg-emerald-500/20' : 'hover:bg-emerald-500/10'}
+                                ${server.status === 'OFFLINE' ? 'text-emerald-400 opacity-100' : 'text-dark-500 opacity-50'}
+                            `}
+                            title="Start"
+                        >
+                            <Play className="w-6 h-6 fill-current" />
+                            {server.status === 'OFFLINE' && <div className="absolute inset-0 bg-emerald-400/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity" />}
+                        </button>
+                        <button
+                            onClick={() => powerMutation.mutate('restart')}
+                            disabled={server.status !== 'RUNNING' || powerMutation.isPending}
+                            className={`
+                                p-3 rounded-lg transition-all duration-300 group relative overflow-hidden
+                                ${powerMutation.isPending && powerMutation.variables === 'restart' ? 'bg-amber-500/20' : 'hover:bg-amber-500/10'}
+                                ${server.status === 'RUNNING' ? 'text-amber-400 opacity-100' : 'text-dark-500 opacity-50'}
+                            `}
+                            title="Restart"
+                        >
+                            <RotateCcw className="w-6 h-6" />
+                        </button>
+                        <button
+                            onClick={() => powerMutation.mutate('stop')}
+                            disabled={server.status !== 'RUNNING' || powerMutation.isPending}
+                            className={`
+                                p-3 rounded-lg transition-all duration-300 group relative overflow-hidden
+                                ${powerMutation.isPending && powerMutation.variables === 'stop' ? 'bg-red-500/20' : 'hover:bg-red-500/10'}
+                                ${server.status === 'RUNNING' ? 'text-red-400 opacity-100' : 'text-dark-500 opacity-50'}
+                            `}
+                            title="Stop"
+                        >
+                            <Square className="w-6 h-6 fill-current" />
+                        </button>
+                        <div className="w-px h-8 bg-white/10 mx-1" />
+                        <button
+                            onClick={() => {
+                                if (confirm('Are you sure you want to force kill the server?')) {
+                                    powerMutation.mutate('kill')
+                                }
+                            }}
+                            disabled={server.status === 'OFFLINE' || powerMutation.isPending}
+                            className="p-3 rounded-lg text-red-600 hover:bg-red-500/10 hover:text-red-500 transition-all duration-300 disabled:opacity-30"
+                            title="Kill"
+                        >
+                            <Skull className="w-6 h-6" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Resource Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-dark-900 border border-dark-700 rounded-sm p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                        <Cpu className="w-4 h-4 text-dark-500" />
-                        <span className="text-[10px] font-medium text-dark-400 uppercase tracking-wider">CPU Usage</span>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                {[
+                    { label: 'CPU Usage', value: `${stats.cpu}%`, icon: Cpu, color: 'text-blue-400', progress: stats.cpu, limit: server.cpu },
+                    { label: 'Memory', value: `${stats.memory} MB`, icon: MemoryStick, color: 'text-purple-400', progress: memoryPercent, limit: 100 },
+                    { label: 'Disk', value: `${server.disk} MB`, icon: HardDrive, color: 'text-emerald-400', progress: 0, limit: 0, static: true },
+                    { label: 'Limit', value: `${server.cpu}%`, icon: Activity, color: 'text-amber-400', progress: 0, limit: 0, static: true }
+                ].map((stat, i) => (
+                    <div key={i} className="glass-panel p-5 rounded-2xl border border-white/5 relative overflow-hidden group hover:border-white/10 transition-colors">
+                        <div className={`absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity ${stat.color}`}>
+                            <stat.icon className="w-12 h-12" />
+                        </div>
+                        <div className="relative z-10">
+                            <div className="flex items-center gap-2 mb-2">
+                                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                                <span className="text-xs font-bold text-dark-400 uppercase tracking-widest">{stat.label}</span>
+                            </div>
+                            <p className="text-2xl font-mono font-bold text-white tracking-tight">{stat.value}</p>
+                            {!stat.static && (
+                                <div className="mt-3 h-1 bg-black/40 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ease-out ${stat.color.replace('text-', 'bg-')}`}
+                                        style={{ width: `${Math.min(stat.progress, 100)}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    <p className="text-2xl font-mono font-semibold text-white">{stats.cpu}%</p>
-                    <div className="mt-3 h-0.5 bg-dark-800 w-full">
-                        <div className="h-full bg-accent transition-all duration-300" style={{ width: `${Math.min(stats.cpu, 100)}% ` }} />
-                    </div>
-                </div>
-                <div className="bg-dark-900 border border-dark-700 rounded-sm p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                        <MemoryStick className="w-4 h-4 text-dark-500" />
-                        <span className="text-[10px] font-medium text-dark-400 uppercase tracking-wider">Memory</span>
-                    </div>
-                    <p className="text-2xl font-mono font-semibold text-white">{stats.memory} MB</p>
-                    <div className="mt-3 h-0.5 bg-dark-800 w-full">
-                        <div className="h-full bg-white transition-all duration-300" style={{ width: `${Math.min(memoryPercent, 100)}% ` }} />
-                    </div>
-                </div>
-                <div className="bg-dark-900 border border-dark-700 rounded-sm p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                        <HardDrive className="w-4 h-4 text-dark-500" />
-                        <span className="text-[10px] font-medium text-dark-400 uppercase tracking-wider">Disk Limit</span>
-                    </div>
-                    <p className="text-2xl font-mono font-semibold text-white">{server.disk} MB</p>
-                </div>
-                <div className="bg-dark-900 border border-dark-700 rounded-sm p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                        <Activity className="w-4 h-4 text-dark-500" />
-                        <span className="text-[10px] font-medium text-dark-400 uppercase tracking-wider">CPU Limit</span>
-                    </div>
-                    <p className="text-2xl font-mono font-semibold text-white">{server.cpu}%</p>
-                </div>
+                ))}
             </div>
 
             {/* Navigation Tabs */}
-            <div className="border-b border-dark-700">
-                <div className="flex gap-1 overflow-x-auto">
+            <div className="sticky top-24 z-20 backdrop-blur-xl bg-black/40 rounded-xl border border-white/5 p-1.5 shadow-xl">
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`
-                                flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all duration-200 border-b-2
+                                flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap
                                 ${activeTab === tab.id
-                                    ? 'text-white border-accent bg-dark-900'
-                                    : 'text-dark-400 border-transparent hover:text-dark-200 hover:bg-dark-900/50'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
                                 }
                             `}
                         >
-                            <tab.icon className="w-4 h-4" />
+                            <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'animate-pulse' : ''}`} />
                             {tab.label}
                         </button>
                     ))}
@@ -333,6 +372,7 @@ export default function ServerView() {
                         onSendCommand={handleSendCommand}
                         status={server.status}
                         installProgress={installProgress}
+                        socketConnected={socketConnected}
                     />
                 )}
 
@@ -343,6 +383,22 @@ export default function ServerView() {
                 )}
 
                 {activeTab === 'files' && <FileManager serverId={id!} />}
+
+                {activeTab === 'sftp' && (
+                    <div className="max-w-3xl">
+                        <SFTPInfo server={server} user={user || undefined} />
+                    </div>
+                )}
+
+                {activeTab === 'startup' && (
+                    <StartupEditor
+                        serverId={id!}
+                        startup={server.startup}
+                        variables={server.variables || []}
+                        isOwner={isOwner}
+                    />
+                )}
+
                 {activeTab === 'players' && <PlayerStats />}
                 {activeTab === 'plugins' && <PluginManager />}
                 {activeTab === 'databases' && <DatabaseManager />}

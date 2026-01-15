@@ -113,6 +113,11 @@ function handleDaemonConnection(io: SocketServer, socket: AuthenticatedSocket) {
         io.to(`server:${data.serverId}`).emit('server:console', data);
     });
 
+    // Handle console history from daemon (sent when client subscribes or reconnects)
+    socket.on('server:console:history', (data: { serverId: string; lines: string[] }) => {
+        io.to(`server:${data.serverId}`).emit('server:console:history', data);
+    });
+
     // Handle resource stats from daemon
     socket.on('server:stats', (data: { serverId: string; cpu: number; memory: number; disk: number }) => {
         io.to(`server:${data.serverId}`).emit('server:stats', data);
@@ -310,9 +315,41 @@ async function handleUserConnection(io: SocketServer, socket: AuthenticatedSocke
 
             // Send current server status
             socket.emit('server:status', { serverId, status: server.status });
+
+            // Request console history from daemon
+            io.to(`node:${server.nodeId}`).emit('server:console:history:request', { serverId });
         } catch (error) {
             console.error('Error subscribing to server:', error);
             socket.emit('error', { message: 'Failed to subscribe' });
+        }
+    });
+
+    // Handle explicit console history request
+    socket.on('server:console:history', async (data: { serverId: string }) => {
+        try {
+            const server = await prisma.server.findUnique({
+                where: { id: data.serverId },
+            });
+            if (!server) {
+                return socket.emit('error', { message: 'Server not found' });
+            }
+            io.to(`node:${server.nodeId}`).emit('server:console:history:request', { serverId: data.serverId });
+        } catch (error) {
+            console.error('Error requesting console history:', error);
+        }
+    });
+
+    // Handle server status request (for reconnection)
+    socket.on('server:status:request', async (data: { serverId: string }) => {
+        try {
+            const server = await prisma.server.findUnique({
+                where: { id: data.serverId },
+            });
+            if (server) {
+                socket.emit('server:status', { serverId: data.serverId, status: server.status });
+            }
+        } catch (error) {
+            console.error('Error fetching server status:', error);
         }
     });
 

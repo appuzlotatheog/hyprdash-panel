@@ -1,8 +1,10 @@
 # Dependencies
 node_modules/
+web/node_modules/
 
 # Build output
 dist/
+web/dist/
 
 # Environment
 .env
@@ -25,9 +27,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-
-# Web build
-web/dist/
 
 # Prisma
 prisma/migrations/

@@ -41,6 +41,8 @@ export default {
             boxShadow: {
                 'glow-sm': '0 0 10px rgba(59, 130, 246, 0.1)',
                 'glow-md': '0 0 15px rgba(59, 130, 246, 0.3)',
+                'glow-lg': '0 0 25px rgba(59, 130, 246, 0.5)',
+                'glow-red-sm': '0 0 15px rgba(239, 68, 68, 0.2)',
             },
             fontFamily: {
                 sans: ['Inter', 'sans-serif'],
